@@ -1,6 +1,6 @@
 // Service worker：第一次開啟時把所有檔案存到手機，之後沒有網路也能打開。
 // ★ 每次修改任何檔案、要更新到手機上時，把下面的版本號加 1（例如 v1 → v2），手機才會換成新版。
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `split-ledger-${VERSION}`;
 
 const FILES = [
@@ -14,6 +14,9 @@ const FILES = [
   './js/calc.js',
   './js/text.js',
   './js/backup.js',
+  './js/banks.js',
+  './js/explain.js',
+  './js/image.js',
   './js/ui.js',
   './js/views/home.js',
   './js/views/friends.js',

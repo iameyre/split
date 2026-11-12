@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   toTwd, splitEqual, splitCustom, settle, summarize, activityStatus, remainingAmount, compareDecimal,
+  multiplyDecimal, splitEqualDetailed, splitCustomDetailed,
 } from '../js/calc.js';
 
 const MEMBERS = ['me', 'ming', 'hua', 'mei']; // 我、小明、阿華、小美
@@ -26,9 +27,17 @@ test('驗收：燒肉／飲料／KTV → 阿華轉我 1350、小美轉我 580、
     { from: 'mei', to: 'me', amount: 580 },
     { from: 'mei', to: 'ming', amount: 690 },
   ]));
-  assert.deepEqual(s.groups.map((g) => [g.to, g.total, g.items.map((t) => t.from)]), [
-    ['me', 1930, ['hua', 'mei']],
-    ['ming', 690, ['mei']],
+  // 畫面上依「誰要付」照成員順序排
+  assert.deepEqual(s.transfers, [
+    { from: 'hua', to: 'me', amount: 1350 },
+    { from: 'mei', to: 'me', amount: 580 },
+    { from: 'mei', to: 'ming', amount: 690 },
+  ]);
+  // 配對過程：沒有金額相同的，三步都是最大對最大
+  assert.deepEqual(s.settlement.steps.map((x) => [x.kind, x.from, x.to, x.amount, x.fromLeft, x.toLeft]), [
+    ['largest', 'hua', 'me', 1350, 0, 580],
+    ['largest', 'mei', 'ming', 690, 580, 0],
+    ['largest', 'mei', 'me', 580, 0, 0],
   ]);
 });
 
@@ -87,6 +96,14 @@ test('規則 5：金額剛好相同的先配對，剩下最大對最大', () => 
   assert.ok(t.some((x) => x.from === 'c' && x.to === 'b' && x.amount === 300), '金額相同的 c→b 要先配對');
   assert.equal(t.length, 3);
   assert.deepEqual(settle({ a: 0, b: 0 }, ['a', 'b']), []);
+});
+
+test('計算過程需要的細節：精確乘法、均分餘數、指定金額差額', () => {
+  assert.equal(multiplyDecimal('3000', '0.21'), '630');
+  assert.equal(multiplyDecimal('1234.5', '0.2134'), '263.4423');
+  assert.deepEqual(splitEqualDetailed(101, ['a', 'b', 'c'], 'c'), { shares: { a: 34, b: 33, c: 34 }, base: 33, rest: 2, bonus: ['c', 'a'] });
+  const d = splitCustomDetailed({ b: '0.5', c: '0.5' }, '1', 1, 'a', ['a', 'b', 'c']);
+  assert.deepEqual([d.rounded, d.diff, d.target, d.targetReason], [{ b: 1, c: 1 }, -1, 'b', 'largest']);
 });
 
 test('首頁狀態文字', () => {

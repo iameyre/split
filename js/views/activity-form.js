@@ -2,6 +2,7 @@
 
 import { h, field, openSheet, twoStepButton, busy, refresh, toast } from '../ui.js';
 import * as store from '../store.js';
+import { formatDateTime } from '../text.js';
 
 export function openActivityForm(activityId) {
   const act = activityId ? store.getActivity(activityId) : null;
@@ -9,11 +10,11 @@ export function openActivityForm(activityId) {
   const locked = new Set(act ? act.memberIds.filter((id) => store.memberHasRecords(act.id, id)) : []);
   let newNames = [];
 
-  const name = h('input', { type: 'text', value: act?.name ?? '', placeholder: '例如 週五燒肉', autocomplete: 'off', enterkeyhint: 'done' });
+  const name = h('input', { type: 'text', value: act?.name ?? '', placeholder: act ? '' : formatDateTime(), autocomplete: 'off' });
   const travel = h('input', { type: 'checkbox', class: 'switch', checked: !!act?.travel });
   const chips = h('div', { class: 'chips' });
   const memberHint = h('p', { class: 'field-hint' });
-  const newInput = h('input', { type: 'text', placeholder: '輸入新名字，空格隔開可一次加多人', autocomplete: 'off', enterkeyhint: 'done' });
+  const newInput = h('input', { type: 'text', placeholder: '輸入新名字，空格隔開可一次加多人', autocomplete: 'off' });
   const error = h('p', { class: 'form-error', role: 'alert' });
 
   function drawChips() {
@@ -62,7 +63,7 @@ export function openActivityForm(activityId) {
     drawChips();
   }
   newInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) {
       e.preventDefault();
       addNames();
     }
@@ -71,12 +72,8 @@ export function openActivityForm(activityId) {
   const save = h('button', { type: 'button', class: 'primary' }, act ? '儲存' : '建立');
   save.addEventListener('click', busy(save, async () => {
     if (newInput.value.trim()) addNames();
-    const n = name.value.trim();
-    if (!n) {
-      error.textContent = '請輸入活動名稱';
-      name.focus();
-      return;
-    }
+    // 沒填名稱就用現在的日期時間，例如「2026/11/12 21:45」
+    const n = name.value.trim() || (act ? act.name : formatDateTime());
     if (selected.size + newNames.length < 2) {
       error.textContent = '至少要兩個人';
       return;
@@ -110,7 +107,7 @@ export function openActivityForm(activityId) {
   const sheet = openSheet({
     title: act ? '編輯活動' : '建立活動',
     body: [
-      field('活動名稱', name),
+      field('活動名稱', name, act ? null : '空白的話，會用現在的日期時間當名稱'),
       h('div', { class: 'field' },
         h('span', { class: 'field-label' }, '成員'),
         chips,

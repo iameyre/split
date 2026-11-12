@@ -1,8 +1,10 @@
 // 活動頁：大字總支出、「明細」「結算」兩個分頁、底部「記一筆」。
 
-import { h, pageHeader, bottomBar } from '../ui.js';
+import { h, pageHeader, bottomBar, swipeable, tag, twoStepButton, toast, refresh } from '../ui.js';
 import * as store from '../store.js';
-import { formatTWD, formatMoney, formatDate } from '../text.js';
+import {
+  formatTWD, formatMoney, formatDate, currencyName, expenseTime, sortExpensesDesc,
+} from '../text.js';
 import { openActivityForm } from './activity-form.js';
 import { openExpenseForm } from './expense-form.js';
 import { renderSettle } from './settle.js';
@@ -19,15 +21,26 @@ export function renderActivity(root, id, tab) {
   if (tab === 'settle') renderSettle(content, act, s);
   else renderList(content, act, s);
 
+  const deleteBtn = twoStepButton('刪除活動', '確定刪除？', async () => {
+    await store.deleteActivity(id);
+    toast(`已刪除「${act.name}」`);
+    location.hash = '#/';
+  }, 'head-link head-danger');
+
   root.replaceChildren(
     pageHeader({
       back: '#/',
       backLabel: '活動',
       title: act.name,
-      right: h('button', { type: 'button', class: 'head-link', onclick: () => openActivityForm(id) }, '編輯'),
+      right: h('div', { class: 'head-actions' },
+        deleteBtn,
+        h('button', { type: 'button', class: 'head-link', onclick: () => openActivityForm(id) }, '編輯')),
       sub: h('div', { class: 'hero' },
         h('div', { class: 'hero-amount num' }, formatTWD(s.total)),
-        h('div', { class: 'hero-sub' }, `總支出・共 ${s.count} 筆・${act.memberIds.length} 人${act.travel ? '・旅行模式' : ''}`)),
+        h('div', { class: 'row-tags' },
+          tag(`共 ${s.count} 筆`),
+          tag(`${act.memberIds.length} 人`),
+          act.travel ? tag('旅行模式') : null)),
     }),
     tabs,
     content,
@@ -50,9 +63,7 @@ function tabLink(label, href, active) {
 }
 
 function renderList(container, act, s) {
-  const expenses = store.expensesOf(act.id).sort((a, b) => (a.date === b.date
-    ? (b.createdAt ?? 0) - (a.createdAt ?? 0)
-    : a.date < b.date ? 1 : -1));
+  const expenses = sortExpensesDesc(store.expensesOf(act.id));
   if (!expenses.length) {
     container.append(h('p', { class: 'empty' }, '還沒有記帳。按下方「記一筆」開始。'));
     return;
@@ -64,20 +75,34 @@ function renderList(container, act, s) {
   }
   for (const g of groups) {
     container.append(
-      h('h3', { class: 'date-head' }, formatDate(g.date)),
+      h('h3', { class: 'date-head num' }, formatDate(g.date)),
       h('ul', { class: 'list' }, g.items.map((e) => {
         const b = s.breakdowns.get(e.id);
-        const how = e.mode === 'custom' ? '指定金額' : `${Object.keys(b.shares).length} 人均分`;
         const foreign = e.currency && e.currency !== 'TWD';
-        return h('li', null,
-          h('button', { type: 'button', class: 'row', onclick: () => openExpenseForm(act.id, e.id) },
-            h('div', { class: 'row-main' },
-              h('div', { class: 'row-title' }, e.title),
-              h('div', { class: 'row-sub' }, `${store.friendName(e.payerId)} 先付，${how}`)),
-            h('div', { class: 'row-right' },
-              h('div', { class: 'row-amount num' }, formatTWD(b.twd)),
-              foreign ? h('div', { class: 'row-sub num' }, formatMoney(e.amount, e.currency)) : null)));
+        const count = Object.keys(b.shares).length;
+        const row = h('button', { type: 'button', class: 'row', onclick: () => openExpenseForm(act.id, e.id) },
+          h('div', { class: 'row-main' },
+            h('div', { class: 'row-title' }, e.title),
+            h('div', { class: 'row-sub' },
+              h('span', { class: 'num' }, expenseTime(e)), `・${store.friendName(e.payerId)} 先付`,
+              e.mode === 'custom' ? '' : `・${count} 人均分`),
+            (e.mode === 'custom' || foreign)
+              ? h('div', { class: 'row-tags' },
+                e.mode === 'custom' ? tag('指定金額', 'primary') : null,
+                foreign ? tag(currencyName(e.currency)) : null)
+              : null),
+          h('div', { class: 'row-right' },
+            h('div', { class: 'row-amount num' }, formatTWD(b.twd)),
+            foreign ? h('div', { class: 'row-sub num' }, formatMoney(e.amount, e.currency)) : null));
+        return h('li', null, swipeable(row, {
+          onConfirm: async () => {
+            await store.deleteExpense(e.id);
+            toast(`已刪除「${e.title}」`);
+            refresh();
+          },
+        }));
       })),
     );
   }
+  container.append(h('p', { class: 'swipe-hint' }, '在帳目上往左或往右滑，可以刪除'));
 }

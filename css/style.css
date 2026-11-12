@@ -112,6 +112,23 @@ a {
   text-decoration: none;
 }
 
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.head-danger {
+  color: var(--neg);
+}
+
+.head-danger.armed {
+  padding: 0 10px;
+  border-radius: 8px;
+  background: var(--neg);
+  color: #fff;
+}
+
 h1 {
   margin: 2px 0 12px;
   font-size: 28px;
@@ -219,25 +236,85 @@ a.row:active {
   white-space: nowrap;
 }
 
-.status::before {
-  content: "・";
-}
-
-.status-pending {
-  color: var(--primary);
-  font-weight: 600;
+/* 小標籤 */
+.row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
 }
 
 .tag {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 7px;
   border: 1px solid var(--line-strong);
-  border-radius: 4px;
+  border-radius: 5px;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 500;
-  vertical-align: 2px;
+  font-weight: 600;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.tag-primary {
+  border-color: rgba(52, 48, 79, 0.45);
+  color: var(--primary);
+}
+
+.tag-pos {
+  border-color: rgba(59, 103, 144, 0.5);
+  color: var(--pos);
+}
+
+.tag-neg {
+  border-color: rgba(176, 80, 61, 0.5);
+  color: var(--neg);
+}
+
+/* 左右滑刪除 */
+.swipe {
+  position: relative;
+  overflow: hidden;
+}
+
+.swipe-content {
+  position: relative;
+  z-index: 1;
+  background: var(--bg);
+  touch-action: pan-y;
+}
+
+.swipe-action {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
+  width: 96px;
+  border: 0;
+  background: var(--neg);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.swipe-action.left {
+  left: 0;
+}
+
+.swipe-action.right {
+  right: 0;
+}
+
+.swipe-action.armed {
+  background: #8F3D2E;
+}
+
+.swipe-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 .page-foot {
@@ -324,42 +401,122 @@ a.row:active {
   margin-top: 20px;
 }
 
-/* ---------- 結算：怎麼轉帳 ---------- */
+/* ---------- 結算：誰要轉給誰 ---------- */
 
-.pay-group {
-  padding: 14px 0 16px;
+.transfers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   border-top: 1px solid var(--line-strong);
 }
 
-.pay-group:last-child {
+.transfer {
+  padding: 14px 0 12px;
   border-bottom: 1px solid var(--line-strong);
 }
 
-.pay-head {
+.transfer-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
 }
 
-.pay-head h3 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 400;
+.transfer-who {
+  font-size: 19px;
+  overflow-wrap: anywhere;
 }
 
-.pay-head strong {
+.transfer-who strong {
   font-weight: 700;
 }
 
-.pay-total {
-  font-size: 18px;
+.arrow {
+  color: var(--muted);
+}
+
+.transfer-amount {
+  font-size: 20px;
   font-weight: 700;
   white-space: nowrap;
 }
 
+.transfer-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
 .pay-info {
-  margin: 4px 0 8px;
+  margin: 6px 0 4px;
+}
+
+.pay-bank {
+  margin-right: 8px;
+}
+
+.share-area {
+  margin-top: 16px;
+}
+
+.share-area .button-row {
+  margin-top: 0;
+}
+
+.secondary.wide {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.quiet-links {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin: 36px 0 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.quiet {
+  padding: 8px 2px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.explain h3 {
+  margin: 18px 0 4px;
+  color: var(--primary);
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.explain-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.explain-head {
+  margin-bottom: 2px;
+  font-weight: 600;
+}
+
+.explain-line {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+img.share-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 12px 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .pay-line {
@@ -377,31 +534,6 @@ a.row:active {
 .account {
   font-weight: 600;
   letter-spacing: 0.02em;
-}
-
-.pay-items {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.pay-items li {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 0 8px 14px;
-  border-top: 1px solid var(--line);
-}
-
-.pay-from {
-  font-size: 17px;
-  overflow-wrap: anywhere;
-}
-
-.pay-amount {
-  font-size: 17px;
-  font-weight: 700;
 }
 
 .net {
@@ -690,6 +822,66 @@ textarea::placeholder {
 
 .form-error:empty {
   display: none;
+}
+
+/* 日期時間：顯示自己的格式，上面疊一層透明的原生選擇器 */
+.dt-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #fff;
+  font-size: 17px;
+}
+
+.dt-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* 銀行代碼建議清單 */
+.suggest {
+  margin-top: 6px;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: none;
+  font-size: 16px;
+  text-align: left;
+}
+
+.suggest-item:last-child {
+  border-bottom: 0;
+}
+
+.suggest-code {
+  min-width: 2.4em;
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .amount-line {

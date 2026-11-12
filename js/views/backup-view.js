@@ -3,12 +3,7 @@
 import { h, pageHeader, copyText, twoStepButton, toast } from '../ui.js';
 import * as store from '../store.js';
 import { makeBackup, parseBackup, backupFileName } from '../backup.js';
-
-function formatDateTime(ms) {
-  const d = new Date(ms);
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
+import { formatDateTime } from '../text.js';
 
 function isIOS() {
   return /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);

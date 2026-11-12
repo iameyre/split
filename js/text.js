@@ -1,4 +1,4 @@
-// 金額格式、日期格式，以及「複製結算」「複製完整明細」的文字。全部是純函式，可以自動測試。
+// 金額格式、日期格式，以及「複製轉帳文字」「複製明細文字」的內容。全部是純函式，可以自動測試。
 
 export const CURRENCIES = [
   { code: 'TWD', name: '台幣' },
@@ -39,53 +39,106 @@ export function formatMoney(amount, currency) {
   return `${currencyName(currency)} ${groupDigits(amount)}`;
 }
 
-const WEEKDAYS = ['日', '一', '二', '三', '四', '五', '六'];
+// ---------- 日期：一律「2026/11/11 14:22」，24 小時制 ----------
 
-/** "2026-11-08" → "11/8（日）"；不是今年就加年份 */
-export function formatDate(dateStr, currentYear = new Date().getFullYear()) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const wd = WEEKDAYS[new Date(y, m - 1, d).getDay()];
-  return `${y === currentYear ? '' : y + '/'}${m}/${d}（${wd}）`;
+const pad2 = (n) => String(n).padStart(2, '0');
+
+/** "2026-11-08" → "2026/11/08" */
+export function formatDate(dateStr) {
+  return String(dateStr || '').replace(/-/g, '/');
 }
 
-/** 今天的日期字串（手機的當地時間） */
+/** 時間戳記或 Date → "2026/11/12 21:30" */
+export function formatDateTime(value = Date.now()) {
+  const d = new Date(value);
+  return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** 今天的日期字串 "2026-11-12"（手機的當地時間） */
 export function todayStr(now = new Date()) {
-  const p = (n) => String(n).padStart(2, '0');
-  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
 }
+
+/** 現在的時間 "21:30" */
+export function timeStr(now = new Date()) {
+  return `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
+}
+
+/** 一筆帳的時間；舊資料沒有時間的話用建立時間 */
+export function expenseTime(e) {
+  if (e.time) return e.time;
+  return e.createdAt ? timeStr(new Date(e.createdAt)) : '00:00';
+}
+
+/** 一筆帳的完整日期時間 "2026/11/12 14:22" */
+export function expenseDateTime(e) {
+  return `${formatDate(e.date)} ${expenseTime(e)}`;
+}
+
+function expenseKey(e) {
+  return `${e.date} ${expenseTime(e)}`;
+}
+
+/** 依日期時間排序（舊的在前） */
+export function sortExpensesAsc(expenses) {
+  return [...expenses].sort((a, b) => {
+    const ka = expenseKey(a);
+    const kb = expenseKey(b);
+    return ka === kb ? (a.createdAt ?? 0) - (b.createdAt ?? 0) : ka < kb ? -1 : 1;
+  });
+}
+
+/** 依日期時間排序（新的在前） */
+export function sortExpensesDesc(expenses) {
+  return sortExpensesAsc(expenses).reverse();
+}
+
+// ---------- 收款資訊 ----------
 
 /** 複製帳號時去掉空格和連字號 */
 export function cleanAccount(account) {
   return String(account || '').replace(/[\s\-－‐–—]/g, '');
 }
 
-/** 一個人的收款資訊，一行一行；完全沒填回傳空陣列 */
+/** 其他收款方式，一行一種 */
+export function otherLines(friend) {
+  return String(friend?.other || '').split('\n').map((x) => x.trim()).filter(Boolean);
+}
+
+/** 收款資訊（朋友列表用）：銀行和帳號同一行 */
 export function paymentLines(friend) {
   const lines = [];
   const bank = (friend?.bank || '').trim();
   const account = (friend?.account || '').trim();
   if (bank || account) lines.push([bank, account].filter(Boolean).join(' '));
-  for (const line of String(friend?.other || '').split('\n')) {
-    if (line.trim()) lines.push(line.trim());
-  }
-  return lines;
+  return lines.concat(otherLines(friend));
+}
+
+/** 收款資訊（轉帳文字用）：銀行一行、帳號自己一行（去掉空格連字號，方便長按複製） */
+export function transferPaymentLines(friend) {
+  const lines = [];
+  const bank = (friend?.bank || '').trim();
+  const account = cleanAccount(friend?.account);
+  if (bank) lines.push(bank);
+  if (account) lines.push(account);
+  return lines.concat(otherLines(friend));
 }
 
 function nameFn(friendsById) {
   return (id) => friendsById[id]?.name ?? '（已刪除）';
 }
 
-/** 「轉給 某某」區塊的文字（沒有要轉帳時回傳空陣列） */
+// ---------- 複製的文字 ----------
+
+/** 「誰要轉給誰」區塊：每筆一段，段落之間空一行 */
 export function transferBlockLines(summary, friendsById) {
   const name = nameFn(friendsById);
   const lines = [];
-  summary.groups.forEach((g, i) => {
+  summary.transfers.forEach((t, i) => {
     if (i > 0) lines.push('');
-    lines.push(`轉給 ${name(g.to)}` + (g.items.length > 1 ? `　共 ${formatTWD(g.total)}` : ''));
-    const pay = paymentLines(friendsById[g.to]);
-    if (pay.length) lines.push(...pay);
-    else lines.push('（還沒有收款資訊）');
-    for (const t of g.items) lines.push(`　${name(t.from)}　${formatTWD(t.amount)}`);
+    lines.push(`${name(t.from)} → ${name(t.to)}　${formatTWD(t.amount)}`);
+    const pay = transferPaymentLines(friendsById[t.to]);
+    lines.push(...(pay.length ? pay : ['（還沒有收款資訊）']));
   });
   return lines;
 }
@@ -94,19 +147,19 @@ function headerLines(activity, summary, suffix) {
   return [`【${activity.name}】${suffix}`, `總支出 ${formatTWD(summary.total)}，共 ${summary.count} 筆`];
 }
 
-function noTransferLine(summary) {
+export function noTransferText(summary) {
   return summary.count === 0 ? '還沒有記帳。' : '大家都打平了，不用轉帳。';
 }
 
-/** 複製結算 */
+/** 複製轉帳文字 */
 export function settlementText(activity, summary, friendsById) {
   const lines = headerLines(activity, summary, '結算');
   const block = transferBlockLines(summary, friendsById);
-  lines.push('', ...(block.length ? block : [noTransferLine(summary)]));
+  lines.push('', ...(block.length ? block : [noTransferText(summary)]));
   return lines.join('\n');
 }
 
-/** 明細裡第二行：「某某 先付；誰誰 均分」或「某某 先付；某某 NT$x、某某 NT$y」 */
+/** 「某某 先付；誰誰 均分」或「某某 先付；某某 NT$x、某某 NT$y」 */
 export function splitDescription(expense, breakdown, memberOrder, friendsById) {
   const name = nameFn(friendsById);
   const ids = memberOrder.filter((id) => id in breakdown.shares)
@@ -117,13 +170,8 @@ export function splitDescription(expense, breakdown, memberOrder, friendsById) {
   return `${name(expense.payerId)} 先付；${who}`;
 }
 
-/** 依日期排序（舊的在前，同一天照記帳順序） */
-export function sortExpensesAsc(expenses) {
-  return [...expenses].sort((a, b) => (a.date === b.date ? (a.createdAt ?? 0) - (b.createdAt ?? 0) : a.date < b.date ? -1 : 1));
-}
-
-/** 複製完整明細 */
-export function fullDetailText(activity, summary, expenses, repayments, friendsById, currentYear) {
+/** 複製明細文字 */
+export function fullDetailText(activity, summary, expenses, repayments, friendsById) {
   const name = nameFn(friendsById);
   const order = activity.memberIds;
   const lines = headerLines(activity, summary, '完整明細');
@@ -131,12 +179,12 @@ export function fullDetailText(activity, summary, expenses, repayments, friendsB
   let lastDate = null;
   for (const e of sortExpensesAsc(expenses)) {
     if (e.date !== lastDate) {
-      lines.push('', formatDate(e.date, currentYear));
+      lines.push('', formatDate(e.date));
       lastDate = e.date;
     }
     const b = summary.breakdowns.get(e.id);
     const foreign = e.currency && e.currency !== 'TWD' ? `（${formatMoney(e.amount, e.currency)}）` : '';
-    lines.push(`${e.title}　${formatTWD(b.twd)}${foreign}`);
+    lines.push(`${expenseTime(e)} ${e.title}　${formatTWD(b.twd)}${foreign}`);
     lines.push('　' + splitDescription(e, b, order, friendsById));
   }
 
@@ -149,12 +197,11 @@ export function fullDetailText(activity, summary, expenses, repayments, friendsB
   if (repayments.length) {
     lines.push('', '已還款');
     for (const r of [...repayments].sort((a, b) => a.createdAt - b.createdAt)) {
-      const d = new Date(r.createdAt);
-      lines.push(`${name(r.from)} → ${name(r.to)}　${formatTWD(r.amount)}（${d.getMonth() + 1}/${d.getDate()}）`);
+      lines.push(`${name(r.from)} → ${name(r.to)}　${formatTWD(r.amount)}（${formatDateTime(r.createdAt)}）`);
     }
   }
 
   const block = transferBlockLines(summary, friendsById);
-  lines.push('', '怎麼轉帳', ...(block.length ? block : [noTransferLine(summary)]));
+  lines.push('', '誰要轉給誰', ...(block.length ? block : [noTransferText(summary)]));
   return lines.join('\n');
 }

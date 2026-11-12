@@ -51,6 +51,14 @@ export function remainingAmount(total, parts) {
   return formatScaled(rest, scale);
 }
 
+/** 兩個十進位數字相乘的精確結果（給「計算過程」顯示用），例如 3000 × 0.21 → "630" */
+export function multiplyDecimal(a, b) {
+  const pa = parseExact(a);
+  const pb = parseExact(b);
+  if (!pa || !pb) return '0';
+  return formatScaled(pa.n * pb.n, pa.scale + pb.scale);
+}
+
 /** 規則 1：金額 × 匯率後四捨五入成台幣整數（台幣匯率為 1） */
 export function toTwd(amount, rate = '1') {
   const a = parseExact(amount);
@@ -68,72 +76,90 @@ export function orderIds(ids, memberOrder) {
 }
 
 /**
- * 規則 2：均分。除不盡的零頭：先付的人在名單內就由他先多 1 元，
- * 再依成員順序每人多 1 元，直到零頭分完。
- * participants 要已經照成員順序排好。
+ * 規則 2：均分（附計算過程）。除不盡的零頭：先付的人在名單內就由他先多 1 元，
+ * 再依成員順序每人多 1 元，直到零頭分完。participants 要已經照成員順序排好。
+ * 回傳 { shares, base, rest, bonus: 多分到 1 元的人 }
  */
-export function splitEqual(totalTwd, participants, payerId) {
+export function splitEqualDetailed(totalTwd, participants, payerId) {
   const shares = {};
   const n = participants.length;
-  if (!n) return shares;
+  if (!n) return { shares, base: 0, rest: 0, bonus: [] };
   const base = Math.floor(totalTwd / n);
-  let rest = totalTwd - base * n;
+  const rest = totalTwd - base * n;
   for (const id of participants) shares[id] = base;
   const queue = participants.includes(payerId)
     ? [payerId, ...participants.filter((id) => id !== payerId)]
     : participants;
-  for (let i = 0; rest > 0; i++, rest--) shares[queue[i]] += 1;
-  return shares;
+  const bonus = queue.slice(0, rest);
+  for (const id of bonus) shares[id] += 1;
+  return { shares, base, rest, bonus };
+}
+
+export function splitEqual(totalTwd, participants, payerId) {
+  return splitEqualDetailed(totalTwd, participants, payerId).shares;
 }
 
 /**
- * 規則 3：指定金額。每人換算台幣後四捨五入，
+ * 規則 3：指定金額（附計算過程）。每人換算台幣後四捨五入，
  * 跟總額的差額加到先付的人；他不在名單就加到（原幣）金額最大的人，同樣大取成員順序在前的。
+ * 回傳 { shares, rounded: 各自四捨五入的結果, diff, target, targetReason: 'payer' | 'largest' }
  */
-export function splitCustom(customAmounts, rate, totalTwd, payerId, memberOrder) {
+export function splitCustomDetailed(customAmounts, rate, totalTwd, payerId, memberOrder) {
   const ids = orderIds(
     Object.keys(customAmounts).filter((id) => isPositiveAmount(customAmounts[id])),
     memberOrder,
   );
   const shares = {};
+  const rounded = {};
   let sum = 0;
   for (const id of ids) {
-    shares[id] = toTwd(customAmounts[id], rate);
-    sum += shares[id];
+    rounded[id] = toTwd(customAmounts[id], rate);
+    shares[id] = rounded[id];
+    sum += rounded[id];
   }
   const diff = totalTwd - sum;
+  let target = null;
+  let targetReason = null;
   if (diff !== 0 && ids.length) {
-    let target = payerId;
-    if (!ids.includes(payerId)) {
+    if (ids.includes(payerId)) {
+      target = payerId;
+      targetReason = 'payer';
+    } else {
       target = ids[0];
       for (const id of ids) {
         if (compareDecimal(customAmounts[id], customAmounts[target]) > 0) target = id;
       }
+      targetReason = 'largest';
     }
     shares[target] += diff;
   }
-  return shares;
+  return { shares, rounded, diff, target, targetReason };
 }
 
-/** 一筆帳的台幣總額和每人分攤 */
+export function splitCustom(customAmounts, rate, totalTwd, payerId, memberOrder) {
+  return splitCustomDetailed(customAmounts, rate, totalTwd, payerId, memberOrder).shares;
+}
+
+/** 一筆帳的台幣總額、每人分攤，以及計算過程 detail */
 export function expenseBreakdown(expense, memberOrder) {
   const rate = expense.currency && expense.currency !== 'TWD' ? expense.rate : '1';
   const twd = toTwd(expense.amount, rate);
-  let shares;
+  let detail;
   if (expense.mode === 'custom') {
-    shares = splitCustom(expense.customAmounts || {}, rate, twd, expense.payerId, memberOrder);
+    detail = splitCustomDetailed(expense.customAmounts || {}, rate, twd, expense.payerId, memberOrder);
   } else {
-    shares = splitEqual(twd, orderIds(expense.participants || [], memberOrder), expense.payerId);
+    detail = splitEqualDetailed(twd, orderIds(expense.participants || [], memberOrder), expense.payerId);
   }
-  return { twd, shares };
+  return { twd, shares: detail.shares, detail };
 }
 
 /**
- * 規則 5：結算。先把應付、應收金額剛好相同的兩人配對，
+ * 規則 5：結算（附配對過程）。先把應付、應收金額剛好相同的兩人配對，
  * 剩下的用「最大應付對最大應收」逐一配對（同樣大取成員順序在前的）。
  * nets：{ 成員id: 淨額 }，正數＝應收、負數＝應付。
+ * steps：每一步 { kind: 'exact' | 'largest', from, to, amount, fromLeft, toLeft }
  */
-export function settle(nets, memberOrder) {
+export function settleWithSteps(nets, memberOrder) {
   const ids = orderIds(Object.keys(nets), memberOrder);
   const debtors = [];
   const creditors = [];
@@ -141,11 +167,15 @@ export function settle(nets, memberOrder) {
     if (nets[id] < 0) debtors.push({ id, amt: -nets[id] });
     else if (nets[id] > 0) creditors.push({ id, amt: nets[id] });
   }
-  const transfers = [];
+  const start = {
+    debtors: debtors.map((d) => ({ ...d })),
+    creditors: creditors.map((c) => ({ ...c })),
+  };
+  const steps = [];
   for (const d of debtors) {
     const c = creditors.find((x) => x.amt > 0 && x.amt === d.amt);
     if (c) {
-      transfers.push({ from: d.id, to: c.id, amount: d.amt });
+      steps.push({ kind: 'exact', from: d.id, to: c.id, amount: d.amt, fromLeft: 0, toLeft: 0 });
       c.amt = 0;
       d.amt = 0;
     }
@@ -156,26 +186,23 @@ export function settle(nets, memberOrder) {
     const c = pickMax(creditors);
     if (!d || !c) break;
     const amount = Math.min(d.amt, c.amt);
-    transfers.push({ from: d.id, to: c.id, amount });
     d.amt -= amount;
     c.amt -= amount;
+    steps.push({ kind: 'largest', from: d.id, to: c.id, amount, fromLeft: d.amt, toLeft: c.amt });
   }
-  return transfers;
+  const transfers = steps.map(({ from, to, amount }) => ({ from, to, amount }));
+  return { transfers, steps, ...start };
 }
 
-/** 把轉帳依收款人分組：收款人和付款人都照成員順序 */
-export function groupTransfers(transfers, memberOrder) {
-  const byTo = new Map();
-  for (const t of transfers) {
-    if (!byTo.has(t.to)) byTo.set(t.to, []);
-    byTo.get(t.to).push(t);
-  }
-  return orderIds([...byTo.keys()], memberOrder).map((to) => {
-    const items = byTo.get(to);
-    const order = orderIds(items.map((t) => t.from), memberOrder);
-    items.sort((a, b) => order.indexOf(a.from) - order.indexOf(b.from));
-    return { to, total: items.reduce((s, t) => s + t.amount, 0), items };
-  });
+export function settle(nets, memberOrder) {
+  return settleWithSteps(nets, memberOrder).transfers;
+}
+
+/** 轉帳依「誰要付」排序：付款人照成員順序，同一人再照收款人順序 */
+export function sortTransfers(transfers, memberOrder) {
+  const pos = new Map(memberOrder.map((id, i) => [id, i]));
+  const p = (id) => pos.get(id) ?? Infinity;
+  return [...transfers].sort((a, b) => p(a.from) - p(b.from) || p(a.to) - p(b.to));
 }
 
 /**
@@ -206,15 +233,15 @@ export function summarize(activity, expenses, repayments = []) {
     p.net = p.paid - p.owed + p.repaidOut - p.repaidIn;
     nets[id] = p.net;
   }
-  const transfers = settle(nets, order);
+  const settlement = settleWithSteps(nets, order);
   return {
     total,
     count: expenses.length,
     people,
     nets,
     breakdowns,
-    transfers,
-    groups: groupTransfers(transfers, order),
+    settlement,
+    transfers: sortTransfers(settlement.transfers, order),
   };
 }
 

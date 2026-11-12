@@ -5,7 +5,9 @@ import * as store from '../store.js';
 import {
   toTwd, isPositiveAmount, splitEqual, splitCustom, remainingAmount,
 } from '../calc.js';
-import { CURRENCIES, currencyName, formatTWD, formatMoney, todayStr } from '../text.js';
+import {
+  CURRENCIES, currencyName, formatTWD, formatMoney, formatDate, todayStr, timeStr, expenseTime,
+} from '../text.js';
 
 /** 只留數字和一個小數點（全形數字也會轉成半形） */
 function cleanNumber(v) {
@@ -44,9 +46,26 @@ export function openExpenseForm(activityId, expenseId) {
   f.rate = exp ? (exp.currency !== 'TWD' ? exp.rate : '') : (f.currency !== 'TWD' ? rates[f.currency] ?? '' : '');
 
   // ---------- 欄位 ----------
-  const title = h('input', { type: 'text', value: exp?.title ?? '', placeholder: '例如 燒肉', autocomplete: 'off', enterkeyhint: 'next' });
+  const title = h('input', { type: 'text', value: exp?.title ?? '', placeholder: '例如 燒肉', autocomplete: 'off' });
   const amount = numberInput(f.amount, '0', (v) => { f.amount = v; update(); });
-  const date = h('input', { type: 'date', value: exp?.date ?? todayStr() });
+  // 日期時間：畫面上一律顯示「2026/11/11 14:22」；點下去打開 iPhone 內建的日期時間選擇器
+  const now = new Date();
+  const dtNative = h('input', {
+    type: 'datetime-local',
+    class: 'dt-native',
+    'aria-label': '日期時間',
+    value: `${exp?.date ?? todayStr(now)}T${exp ? expenseTime(exp) : timeStr(now)}`,
+  });
+  const dtText = h('span', { class: 'num' });
+  const drawDt = () => {
+    const v = dtNative.value || `${todayStr()}T${timeStr()}`;
+    dtText.textContent = `${formatDate(v.slice(0, 10))} ${v.slice(11, 16)}`;
+  };
+  dtNative.addEventListener('input', drawDt);
+  dtNative.addEventListener('change', drawDt);
+  dtNative.addEventListener('click', () => { try { dtNative.showPicker(); } catch { /* 舊瀏覽器沒有 showPicker */ } });
+  drawDt();
+  const dtField = h('label', { class: 'dt-field' }, dtText, dtNative);
 
   const rateInput = numberInput(f.rate, '例如 0.21', (v) => { f.rate = v; update(); });
   const rateUnit = h('span', { class: 'rate-unit' });
@@ -202,7 +221,8 @@ export function openExpenseForm(activityId, expenseId) {
       amount: f.amount,
       currency: f.currency,
       rate: foreign ? f.rate : '1',
-      date: date.value || todayStr(),
+      date: (dtNative.value || `${todayStr()}T${timeStr()}`).slice(0, 10),
+      time: (dtNative.value || `${todayStr()}T${timeStr()}`).slice(11, 16),
       payerId: f.payerId,
       mode: f.mode,
     };
@@ -248,7 +268,7 @@ export function openExpenseForm(activityId, expenseId) {
         h('span', { class: 'field-label' }, '金額'),
         h('div', { class: 'amount-line' }, currencySelect, amount),
         rateRow),
-      field('日期', date),
+      h('div', { class: 'field' }, h('span', { class: 'field-label' }, '日期時間'), dtField),
       h('div', { class: 'field' }, h('span', { class: 'field-label' }, '誰先付'), payerChips),
       h('div', { class: 'field' }, h('span', { class: 'field-label' }, '分法'), segment),
       equalSection,

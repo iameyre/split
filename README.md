@@ -15,8 +15,11 @@
 | `sw.js` | 離線快取（service worker） |
 | `css/style.css` | 樣式 |
 | `js/calc.js` | 分帳計算（換算、均分、指定金額、結算配對） |
-| `js/text.js` | 金額格式、複製結算／完整明細的文字 |
+| `js/text.js` | 金額與日期格式、複製轉帳文字／明細文字 |
 | `js/backup.js` | 備份格式檢查、備份提醒 |
+| `js/banks.js` | 台灣銀行代碼（輸入時自動帶入） |
+| `js/explain.js` | 「查看計算過程」的內容 |
+| `js/image.js` | 產生結算／明細圖片（瀏覽器內建 canvas） |
 | `js/db.js`、`js/store.js` | IndexedDB 讀寫 |
 | `js/ui.js` | 共用畫面元件 |
 | `js/views/` | 各個畫面 |
