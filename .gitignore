@@ -1,0 +1,4 @@
+# 不需要放上 GitHub 的東西
+.claude/
+node_modules/
+*.log

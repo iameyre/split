@@ -1,0 +1,9 @@
+{
+  "name": "split-ledger",
+  "private": true,
+  "description": "自己用的分帳 App（PWA）。這個檔案只是讓電腦上的 Node.js 能跑自動測試，App 本身不需要它。",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}
